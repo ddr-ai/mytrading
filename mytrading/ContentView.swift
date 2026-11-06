@@ -7,7 +7,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 16) {
             Text("Live Trading Bot").font(.title)
-            Text("Platform: Binance (free, 24/7)").font(.caption)
+            Text("Platform: Kraken (regulated, NYC)").font(.caption)
             Text("Asset: \(bot.symbol)").font(.headline)
             Text("Balance: $\(String(format: "%.2f", bot.balance))")
             Text("Status: \(bot.running ? "Running" : "Stopped")")
@@ -19,8 +19,8 @@ struct ContentView: View {
             Picker("Symbol", selection: $bot.symbol) {
                 ForEach(bot.symbols, id: \.self) { s in Text(s) }
             }.pickerStyle(.segmented).onChange(of: bot.symbol) { _ in bot.switchSymbol() }
-            SecureField("Binance API Key", text: $apiKey)
-            SecureField("Binance Secret", text: $secret)
+            SecureField("Kraken API Key", text: $apiKey)
+            SecureField("Kraken Secret", text: $secret)
             Text(bot.log).font(.caption).lineLimit(10)
         }.padding()
     }
