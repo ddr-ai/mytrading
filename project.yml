@@ -1,0 +1,20 @@
+name: mytrading
+options:
+  bundleIdPrefix: com.ddrai
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  mytrading:
+    type: application
+    platform: iOS
+    sources: [mytrading]
+    info:
+      path: mytrading/Info.plist
+      properties:
+        CFBundleDisplayName: mytrading
+        UILaunchStoryboardName: LaunchScreen
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ddrai.mytrading
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO

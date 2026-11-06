@@ -1,0 +1,27 @@
+name: Build IPA
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build
+        run: |
+          xcodebuild -project mytrading.xcodeproj -scheme mytrading -sdk iphoneos -configuration Release \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r $(find ~/Library/Developer/Xcode/DerivedData -name "mytrading.app" -type d | head -1) Payload/
+          zip -r mytrading.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mytrading-ipa
+          path: mytrading.ipa
