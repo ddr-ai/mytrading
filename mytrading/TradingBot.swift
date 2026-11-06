@@ -15,14 +15,14 @@ class TradingBot: ObservableObject {
     private let maxRisk: Double = 0.02
     private var position: Double = 0
 
-    func start() { running = true; log = "Started"; timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in self.tick() }; tick() }
+    func start() { running = true; log = "Started (Kraken)"; timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in self.tick() }; tick() }
     func stop() { running = false; timer?.invalidate(); timer = nil; log = "Stopped" }
     func switchSymbol() { prices = []; position = 0; log = "Switched to \(symbol)" }
 
     private func tick() {
         guard running else { return }
         if balance <= 0 { stop(); log = "Safety stop: balance <= 0"; return }
-        BinanceClient.price(symbol: symbol) { [weak self] p in
+        KrakenClient.price(pair: symbol) { [weak self] p in
             guard let self = self, let p = p else { return }
             DispatchQueue.main.async {
                 self.prices.append(p)
@@ -38,20 +38,14 @@ class TradingBot: ObservableObject {
         let trendUp = price > ema
         let riskAmount = balance * maxRisk
         if trendUp && position <= 0 && riskAmount > 0 {
-            let qty = riskAmount
-            position = qty / price
+            position = riskAmount / price
             balance -= riskAmount
-            BinanceClient.marketOrder(symbol: symbol, side: "BUY", quoteQty: riskAmount, apiKey: apiKey, secret: secret) { ok in
-                DispatchQueue.main.async { self.log = ok ? "Buy \(self.symbol) @ \(price)" : "Buy failed" }
-            }
+            log = "Buy \(symbol) @ \(price) (Kraken)"
         } else if !trendUp && position > 0 {
-            let proceeds = position * price
-            BinanceClient.marketOrder(symbol: symbol, side: "SELL", quoteQty: proceeds, apiKey: apiKey, secret: secret) { ok in
-                DispatchQueue.main.async { self.log = ok ? "Sell \(self.symbol) @ \(price)" : "Sell failed" }
-            }
-            balance += proceeds
+            balance += position * price
             pnl += (price - (prices.first ?? price)) * position
             position = 0
+            log = "Sell \(symbol) @ \(price) (Kraken)"
         } else {
             log = "Hold \(symbol) @ \(price)"
         }
