@@ -7,6 +7,8 @@ class TradingBot: ObservableObject {
     @Published var pnl: Double = 0
     @Published var log = ""
     @Published var symbol = "BTCUSDT"
+    var apiKey = ""
+    var secret = ""
     let symbols = ["BTCUSDT","ETHUSDT","SOLUSDT"]
     private var timer: Timer?
     private var prices: [Double] = []
@@ -36,15 +38,20 @@ class TradingBot: ObservableObject {
         let trendUp = price > ema
         let riskAmount = balance * maxRisk
         if trendUp && position <= 0 && riskAmount > 0 {
-            let qty = riskAmount / price
-            position = qty
+            let qty = riskAmount
+            position = qty / price
             balance -= riskAmount
-            log = "Buy \(symbol) @ \(price)"
+            BinanceClient.marketOrder(symbol: symbol, side: "BUY", quoteQty: riskAmount, apiKey: apiKey, secret: secret) { ok in
+                DispatchQueue.main.async { self.log = ok ? "Buy \(self.symbol) @ \(price)" : "Buy failed" }
+            }
         } else if !trendUp && position > 0 {
-            balance += position * price
+            let proceeds = position * price
+            BinanceClient.marketOrder(symbol: symbol, side: "SELL", quoteQty: proceeds, apiKey: apiKey, secret: secret) { ok in
+                DispatchQueue.main.async { self.log = ok ? "Sell \(self.symbol) @ \(price)" : "Sell failed" }
+            }
+            balance += proceeds
             pnl += (price - (prices.first ?? price)) * position
             position = 0
-            log = "Sell \(symbol) @ \(price)"
         } else {
             log = "Hold \(symbol) @ \(price)"
         }
