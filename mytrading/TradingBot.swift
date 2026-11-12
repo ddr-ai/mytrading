@@ -68,7 +68,8 @@ class TradingBot: ObservableObject {
         let group = DispatchGroup()
         var currentPrice: Double?
         var currentVolume: Double?
-        var orderBook: [String: Any]?
+        var bidVolume: Double = 0
+        var askVolume: Double = 0
         
         group.enter()
         GeminiClient.price(symbol: symbol) { p in currentPrice = p; group.leave() }
@@ -80,7 +81,15 @@ class TradingBot: ObservableObject {
             group.leave()
         }
         group.enter()
-        GeminiClient.orderBook(symbol: symbol) { ob in orderBook = ob; group.leave() }
+        GeminiClient.orderBook(symbol: symbol) { ob in
+            if let ob = ob,
+               let bids = ob["bids"] as? [[String]],
+               let asks = ob["asks"] as? [[String]] {
+                bidVolume = bids.prefix(10).compactMap { Double($0[1]) }.reduce(0, +)
+                askVolume = asks.prefix(10).compactMap { Double($0[1]) }.reduce(0, +)
+            }
+            group.leave()
+        }
         
         group.notify(queue: .main) {
             guard let price = currentPrice, let volume = currentVolume else { 
@@ -90,11 +99,11 @@ class TradingBot: ObservableObject {
             self.volumes.append(volume)
             if self.prices.count > 100 { self.prices.removeFirst() }
             if self.volumes.count > 100 { self.volumes.removeFirst() }
-            self.analyzeAndDecide(price: price, volume: volume, orderBook: orderBook)
+            self.analyzeAndDecide(price: price, volume: volume, bidVol: bidVolume, askVol: askVolume)
         }
     }
 
-    private func analyzeAndDecide(price: Double, volume: Double, orderBook: [String: Any]?) {
+    private func analyzeAndDecide(price: Double, volume: Double, bidVol: Double, askVol: Double) {
         guard prices.count >= 20 else { log = "📊 Warming up (\(prices.count)/20)"; return }
         
         // Multi-timeframe EMAs
@@ -108,15 +117,9 @@ class TradingBot: ObservableObject {
         let avgVol = volumes.suffix(20).reduce(0,+) / 20.0
         let volRatio = volume / max(avgVol, 1)
         
-        // Order book imbalance (bid/ask pressure)
+        // Order book imbalance
         var bookImbalance = 0.0
-        if let ob = orderBook,
-           let bids = ob["bids"] as? [[String: String]],
-           let asks = ob["asks"] as? [[String: String]] {
-            let bidVol = bids.prefix(10).compactMap { Double($0[1]) }.reduce(0, +)
-            let askVol = asks.prefix(10).compactMap { Double($0[1]) }.reduce(0, +)
-            if bidVol + askVol > 0 { bookImbalance = (bidVol - askVol) / (bidVol + askVol) }
-        }
+        if bidVol + askVol > 0 { bookImbalance = (bidVol - askVol) / (bidVol + askVol) }
         
         // Trend detection
         let trendUp = price > ema9 && ema9 > ema20
@@ -126,7 +129,7 @@ class TradingBot: ObservableObject {
         let momentum = prices.count >= 5 ? (price - prices[prices.count-5]) / prices[prices.count-5] : 0
         
         // Risk-adjusted position size
-        let riskAmount = min(balance * maxRisk, balance * 0.5) // cap at 50% of balance
+        let riskAmount = min(balance * maxRisk, balance * 0.5)
         
         // Decision logic with confirmations
         let buySignal = trendUp && rsi < 70 && volRatio > 0.5 && bookImbalance > -0.3 && momentum > -0.005
@@ -134,7 +137,7 @@ class TradingBot: ObservableObject {
         
         let signalDesc = "EMA9:\(String(format:"%.0f",ema9)) EMA20:\(String(format:"%.0f",ema20)) RSI:\(String(format:"%.0f",rsi)) Vol:\(String(format:"%.1fx",volRatio)) Book:\(String(format:"%.2f",bookImbalance)) Mom:\(String(format:"%.3f",momentum))"
         
-        if buySignal && position <= 0 && riskAmount > 10 { // min $10 order
+        if buySignal && position <= 0 && riskAmount > 10 {
             position = riskAmount / price
             entryPrice = price
             balance -= riskAmount
@@ -171,7 +174,7 @@ class TradingBot: ObservableObject {
                 if ok {
                     self.log = "✅ BUY filled \(self.symbol) @ $\(String(format:"%.2f",price))"
                 } else {
-                    self.balance += riskAmount // refund on failure
+                    self.balance += riskAmount
                     self.position = 0
                     self.log = "❌ BUY failed: \(msg ?? "unknown") — refunded"
                 }
