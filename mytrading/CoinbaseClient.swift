@@ -1,16 +1,11 @@
 import Foundation
 import CryptoKit
 
-// Coinbase Advanced Trade API - regulated, BitLicense, available in NYC
 struct CoinbaseClient {
     static let base = "https://api.coinbase.com/api/v3/brokerage"
     
     static func price(productId: String, completion: @escaping (Double?) -> Void) {
-        // Convert BTCUSDT -> BTC-USD
         let pair = productId.replacingOccurrences(of: "USDT", with: "-USD")
-            .replacingOccurrences(of: "BTC", with: "BTC")
-            .replacingOccurrences(of: "ETH", with: "ETH")
-            .replacingOccurrences(of: "SOL", with: "SOL")
         guard let url = URL(string: "\(base)/products/\(pair)/ticker") else { completion(nil); return }
         URLSession.shared.dataTask(with: url) { data,_,_ in
             guard let data = data,
@@ -24,7 +19,15 @@ struct CoinbaseClient {
     static func marketOrder(productId: String, side: String, quoteSize: Double, apiKey: String, secret: String, completion: @escaping (Bool) -> Void) {
         let pair = productId.replacingOccurrences(of: "USDT", with: "-USD")
         let ts = String(Int(Date().timeIntervalSince1970))
-        let body = ["product_id": pair, "side": side.lowercased(), "order_configuration": ["market_market_ioc": ["quote_size": String(format: "%.2f", quoteSize)]]]
+        let body: [String: Any] = [
+            "product_id": pair,
+            "side": side.lowercased(),
+            "order_configuration": [
+                "market_market_ioc": [
+                    "quote_size": String(format: "%.2f", quoteSize)
+                ]
+            ]
+        ]
         guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else { completion(false); return }
         
         let method = "POST"
