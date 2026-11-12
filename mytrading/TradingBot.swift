@@ -15,14 +15,14 @@ class TradingBot: ObservableObject {
     private let maxRisk: Double = 0.02
     private var position: Double = 0
 
-    func start() { running = true; log = "Started (Coinbase NYC)"; timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in self.tick() }; tick() }
+    func start() { running = true; log = "Started (Bitstamp NYC)"; timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in self.tick() }; tick() }
     func stop() { running = false; timer?.invalidate(); timer = nil; log = "Stopped" }
     func switchSymbol() { prices = []; position = 0; log = "Switched to \(symbol)" }
 
     private func tick() {
         guard running else { return }
         if balance <= 0 { stop(); log = "Safety stop: balance <= 0"; return }
-        CoinbaseClient.price(productId: symbol) { [weak self] p in
+        BitstampClient.price(symbol: symbol) { [weak self] p in
             guard let self = self, let p = p else { return }
             DispatchQueue.main.async {
                 self.prices.append(p)
@@ -40,13 +40,13 @@ class TradingBot: ObservableObject {
         if trendUp && position <= 0 && riskAmount > 0 {
             position = riskAmount / price
             balance -= riskAmount
-            CoinbaseClient.marketOrder(productId: symbol, side: "BUY", quoteSize: riskAmount, apiKey: apiKey, secret: secret) { ok in
-                DispatchQueue.main.async { self.log = ok ? "Buy \(self.symbol) @ \(price) (Coinbase)" : "Buy failed" }
+            BitstampClient.marketOrder(symbol: symbol, side: "BUY", amount: riskAmount / price, apiKey: apiKey, secret: secret) { ok in
+                DispatchQueue.main.async { self.log = ok ? "Buy \(self.symbol) @ \(price) (Bitstamp)" : "Buy failed" }
             }
         } else if !trendUp && position > 0 {
             let proceeds = position * price
-            CoinbaseClient.marketOrder(productId: symbol, side: "SELL", quoteSize: proceeds, apiKey: apiKey, secret: secret) { ok in
-                DispatchQueue.main.async { self.log = ok ? "Sell \(self.symbol) @ \(price) (Coinbase)" : "Sell failed" }
+            BitstampClient.marketOrder(symbol: symbol, side: "SELL", amount: position, apiKey: apiKey, secret: secret) { ok in
+                DispatchQueue.main.async { self.log = ok ? "Sell \(self.symbol) @ \(price) (Bitstamp)" : "Sell failed" }
             }
             balance += proceeds
             pnl += (price - (prices.first ?? price)) * position
