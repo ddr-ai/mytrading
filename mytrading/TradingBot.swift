@@ -3,30 +3,57 @@ import Combine
 
 class TradingBot: ObservableObject {
     @Published var running = false
-    @Published var balance: Double = 0
+    @Published var balance: Double = 100
     @Published var pnl: Double = 0
     @Published var log = ""
     @Published var symbol = "BTCUSDT"
+    var apiKey = ""
+    var secret = ""
     let symbols = ["BTCUSDT","ETHUSDT","SOLUSDT"]
     private var timer: Timer?
-    private let minBalance: Double = 0
+    private var prices: [Double] = []
     private let maxRisk: Double = 0.02
-    private var startBalance: Double = 0
+    private var position: Double = 0
 
-    func start() {
-        running = true
-        log = "Started"
-        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in self.tick() }
-        tick()
-    }
+    func start() { running = true; log = "Started (Coinbase NYC)"; timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in self.tick() }; tick() }
     func stop() { running = false; timer?.invalidate(); timer = nil; log = "Stopped" }
-    func switchSymbol() { log = "Switched to \(symbol)" }
+    func switchSymbol() { prices = []; position = 0; log = "Switched to \(symbol)" }
 
     private func tick() {
         guard running else { return }
-        // Safety: never below $0
-        if balance < minBalance { stop(); log = "Safety stop: balance <= 0"; return }
-        // Placeholder trade decision logic using market data would go here
-        log = "Tick \(symbol) balance \(String(format:"%.2f",balance))"
+        if balance <= 0 { stop(); log = "Safety stop: balance <= 0"; return }
+        CoinbaseClient.price(productId: symbol) { [weak self] p in
+            guard let self = self, let p = p else { return }
+            DispatchQueue.main.async {
+                self.prices.append(p)
+                if self.prices.count > 50 { self.prices.removeFirst() }
+                self.decide(price: p)
+            }
+        }
+    }
+
+    private func decide(price: Double) {
+        guard prices.count >= 10 else { log = "Warming up"; return }
+        let ema = prices.suffix(10).reduce(0,+) / 10.0
+        let trendUp = price > ema
+        let riskAmount = balance * maxRisk
+        if trendUp && position <= 0 && riskAmount > 0 {
+            position = riskAmount / price
+            balance -= riskAmount
+            CoinbaseClient.marketOrder(productId: symbol, side: "BUY", quoteSize: riskAmount, apiKey: apiKey, secret: secret) { ok in
+                DispatchQueue.main.async { self.log = ok ? "Buy \(self.symbol) @ \(price) (Coinbase)" : "Buy failed" }
+            }
+        } else if !trendUp && position > 0 {
+            let proceeds = position * price
+            CoinbaseClient.marketOrder(productId: symbol, side: "SELL", quoteSize: proceeds, apiKey: apiKey, secret: secret) { ok in
+                DispatchQueue.main.async { self.log = ok ? "Sell \(self.symbol) @ \(price) (Coinbase)" : "Sell failed" }
+            }
+            balance += proceeds
+            pnl += (price - (prices.first ?? price)) * position
+            position = 0
+        } else {
+            log = "Hold \(symbol) @ \(price)"
+        }
+        if balance < 0 { balance = 0; stop(); log = "Safety: clamped to 0" }
     }
 }
